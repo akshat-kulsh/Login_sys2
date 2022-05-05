@@ -1,6 +1,6 @@
 from models import *
 import pandas as pd
-from flask import request, jsonify
+from flask import jsonify
 import json
 
 def mk_session(fun):

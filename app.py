@@ -1,4 +1,3 @@
-from tkinter.tix import Select
 from flask import Flask, request, jsonify, make_response
 from flask_restful import Api
 from flask_bcrypt import Bcrypt
@@ -8,7 +7,6 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager
-from requests import Response
 from db import *
 
 app = Flask(__name__)
