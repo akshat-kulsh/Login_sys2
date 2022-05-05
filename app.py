@@ -1,16 +1,15 @@
+from tkinter.tix import Select
 from flask import Flask, request, jsonify, make_response
-from flask_login import current_user
 from flask_restful import Api
-from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-import jwt
-import datetime
 from functools import wraps
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager
+from requests import Response
+from db import *
 
 app = Flask(__name__)
 api = Api(app)
@@ -22,71 +21,28 @@ login_manager.init_app(app)
 app.config['SECRET_KEY'] = "thisissecretkey"
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://postgres:akshat0509@localhost/login_sys"
 
-db = SQLAlchemy(app)
-db1 = SQLAlchemy(app)
-
-class User(db.Model):
-    __tablename__ = 'user_table'
-    idusers = db.Column(db.Integer,primary_key=True)
-    username = db.Column(db.String(30))
-    email = db.Column(db.String(30))
-    pssword = db.Column(db.String(100))
-    p_id = db.Column(db.Integer)
-
-class adUnit(db1.Model):
-    __tablename__ = 'ad_Unit'
-    id = db.Column(db.Integer,primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey(User.idusers))
-    user_table = db.relationship("User", backref=db.backref("user_table", uselist=False))
-    page_name = db.Column(db.String(30))
-    adUnitSize = db.Column(db.String(40))
-    adLink = db.Column(db.String(100))
-
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-
-        if 'x-access-token' in request.headers:
-            token = request.headers['x-access-token']
-        
-        if not token:
-            return jsonify({'message': 'token is missing!!'})
-        
-        try:
-            data = jwt.decode(token, app.config['SECRET_KEY'])
-            current_user = User.query.filter_by(p_id = data['p_id']).first()
-        except:
-            return jsonify({"message": "token is invalid!!"})
-
-        return f(current_user,*args, **kwargs)
-    return decorated
-
-
 @app.route('/signup',methods=["POST"])
 def create_user():
     data = request.get_json()
-    password = bcrypt.generate_password_hash(data['pssword']).decode("utf-8")
+    password = bcrypt.generate_password_hash(data['password']).decode("utf-8")
     new_user = User(username=data['username'],email=data['email'],pssword=password,p_id=data['p_id'],)
-    db.session.add(new_user)
-    db.session.commit()
+    session.add(new_user)
+    session.commit()
     return jsonify({"message":"New User created"},data)
 
 @app.route('/login', methods=["POST"])
 def login():
-    auth = request.authorization
-
-    if not auth or not auth.username or not auth.password:
-        return make_response("Need more arguments")
+    data = request.get_json()
+    user_email = data['email']
+    user_password = data['password']
     
-    user = User.query.filter_by(email=auth.username).first()
+    user, user_pass= dbGetUserByEmail(user_email)
 
     if not user:
         return make_response("User doesn't exist")
     
-    if bcrypt.check_password_hash(user.pssword, auth.password):
-        token = create_access_token(identity=auth.username)
-        #token = jwt.encode({'user':auth.username, 'exp':datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
+    if bcrypt.check_password_hash(user_pass, user_password):
+        token = create_access_token(identity=user_email)
         return jsonify({ "token": token })
     return make_response("incorrect password")
 
@@ -97,21 +53,23 @@ def user_info():
     return jsonify(logged_in_as=current_user), 200
 
 @app.route('/save_ad_unit', methods=['POST'])
-@login_manager.user_loader
+@jwt_required()
 def save_ad():
     data = request.get_json()
-    query = "SELECT idusers FROM user_table WHERE email = '%s'" %(current_user,)
-    user_id = db.engine.execute(query)
-    print(user_id, type(user_id))
-    save_ad = adUnit(page_name=data['page_name'], adUnitSize=data['adUnitSize'], adLink=data['adLink'], user_id= user_id )
-    db1.session.add(save_ad)
-    db1.session.commit()
+    current_user = get_jwt_identity()
+    user_id = dbGetUser(current_user)
+    dbSaveAdUnit(data,int(user_id))
+
     return jsonify({"message":"New Ad Unit created"},data)
 
-
-@app.route('/load_ad_unit', methods=["GET"])
+@app.route('/get_ad_unit/', methods=["GET"])
+@jwt_required()
 def load_ad():
-    return jsonify()
+    if 'page' in request.args:
+        page_name = request.args['page']
+        return(dbLoadAdUnit(page_name))
+    else:
+        return(dbEmptyLoadAdUnit())
 
 if __name__ == "__main__":
     app.run(debug=True)
